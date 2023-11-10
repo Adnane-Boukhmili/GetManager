@@ -44,6 +44,7 @@ class pricingController extends Controller
         $response =  $stripe->checkout->sessions->create([
                 'success_url' => $redirectUrl,
                 'customer_email' => $user->email,
+                'invoice_creation' => ['enabled' => true],
                 'payment_method_types' => ['link', 'card'],
                 'line_items' => [
                     [
@@ -58,7 +59,9 @@ class pricingController extends Controller
                     ],
                 ],
                 'mode' => 'payment',
+                
                 'allow_promotion_codes' => true
+                
             ]);
   
         return redirect($response['url']);
@@ -68,12 +71,17 @@ class pricingController extends Controller
     {
         
         $stripe = new \Stripe\StripeClient("sk_test_51O9kwwJX2IHTqWpZq5k6o1ORESbIcIiZBWd5vhj1mlnGAcDv0Xb2J0rfFLcsquTfT47yf9YqMiT3vz5JMMynVcak001G7gyCQ0");
-  
+        $user = Auth::user();
         $session = $stripe->checkout->sessions->retrieve($request->session_id);
         info($session);
 
+        $invoice = $stripe->invoices->retrieve(
+            $session->invoice,
+            []
+          );
 
-        $user = Auth::user();
+
+       
         $data = session('myData');
         $employeeCount = $data['nbremp'];
         $totalprice = $data['totalprice'];
@@ -85,6 +93,8 @@ class pricingController extends Controller
         $sale->employee_count = $employeeCount;
         $sale->total_price = $totalprice;
         $sale->payment_status = 'Paid Successfuly';
+        $sale->type = 'Buying Plan';
+        $sale->invoice = $invoice->invoice_pdf;
         $sale->save();
 
         $employeeCountHistory = Employeecounthistory::where('user_id', $user->id)->first();
@@ -133,6 +143,7 @@ class pricingController extends Controller
         $response =  $stripe->checkout->sessions->create([
                 'success_url' => $redirectUrl,
                 'customer_email' => $user->email,
+                'invoice_creation' => ['enabled' => true],
                 'payment_method_types' => ['link', 'card'],
                 'line_items' => [
                     [
@@ -156,12 +167,16 @@ class pricingController extends Controller
     public function stripeCheckoutUpgradeSuccess(Request $request)
     {
         $stripe = new \Stripe\StripeClient("sk_test_51O9kwwJX2IHTqWpZq5k6o1ORESbIcIiZBWd5vhj1mlnGAcDv0Xb2J0rfFLcsquTfT47yf9YqMiT3vz5JMMynVcak001G7gyCQ0");
-  
+        $user = Auth::user();
         $session = $stripe->checkout->sessions->retrieve($request->session_id);
         info($session);
 
+        $invoice = $stripe->invoices->retrieve(
+            $session->invoice,
+            []
+          );
 
-        $user = Auth::user();
+        
         $data = session('myData2');
         $employeeCount = $data['nbremp'];
         $totalprice = $data['totalprice'];
@@ -182,6 +197,8 @@ class pricingController extends Controller
         $sale->employee_count = $employeeCount;
         $sale->total_price = $totalprice; 
         $sale->payment_status = 'Paid Successfuly';
+        $sale->type = 'Upgrading Plan';
+        $sale->invoice = $invoice->invoice_pdf;
         $sale->save();
 
 
@@ -195,7 +212,6 @@ class pricingController extends Controller
 
 public function stripeCheckoutAdd($nbremp)
 {
-    
     $user = Auth::user();
     $plan = Plan::find(2);
     
@@ -221,6 +237,7 @@ public function stripeCheckoutAdd($nbremp)
     $response =  $stripe->checkout->sessions->create([
             'success_url' => $redirectUrl,
             'customer_email' => $user->email,
+            'invoice_creation' => ['enabled' => true],
             'payment_method_types' => ['link', 'card'],
             'line_items' => [
                 [
@@ -244,12 +261,16 @@ public function stripeCheckoutAdd($nbremp)
 public function stripeCheckoutAddSuccess(Request $request)
 {
     $stripe = new \Stripe\StripeClient("sk_test_51O9kwwJX2IHTqWpZq5k6o1ORESbIcIiZBWd5vhj1mlnGAcDv0Xb2J0rfFLcsquTfT47yf9YqMiT3vz5JMMynVcak001G7gyCQ0");
-
+    $user = Auth::user();
     $session = $stripe->checkout->sessions->retrieve($request->session_id);
     info($session);
 
+    $invoice = $stripe->invoices->retrieve(
+        $session->invoice,
+        []
+      );
 
-    $user = Auth::user();
+    
     $data = session('myData3');
     $employeeCount = $data['nbremp'];
     $totalprice = $data['totalprice'];
@@ -260,6 +281,8 @@ public function stripeCheckoutAddSuccess(Request $request)
     $sale->employee_count = $employeeCount;
     $sale->total_price = $totalprice;
     $sale->payment_status = 'Paid Successfuly';
+    $sale->type = 'Adding Employees';
+    $sale->invoice = $invoice->invoice_pdf;
     $sale->save();
 
     $employeeCountHistory = $user->employeeCountHistory;

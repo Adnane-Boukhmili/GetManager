@@ -21,6 +21,12 @@ class managingController extends Controller
             return view ('managing');
         }
     }
+    public function invoices(){
+        $user = auth()->user();
+        $invoices=Sale::where('user_id',$user->id)->get();
+        return view('invoices',compact('invoices'));
+    }
+
 
     public function create_employer(Request $request)
     {

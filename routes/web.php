@@ -23,6 +23,8 @@ Route::get('/', function () {
 Route::get('/pricing',[pricingController::class,'pricing']);
 Route::post('/set_pricing',[pricingController::class,'set_pricing']);
 Route::get('/managing',[managingController::class,'managing'])->name('managing');
+Route::get('/invoices',[managingController::class,'invoices'])->name('invoices');
+
 
 
 Route::post('/create_employer',[managingController::class,'create_employer']);

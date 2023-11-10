@@ -18,6 +18,8 @@ return new class extends Migration
             $table->integer('employee_count');
             $table->decimal('total_price', 10, 2);
             $table->string('payment_status');
+            $table->string('type');
+            $table->string('invoice');
             $table->timestamps();
 
             $table->foreign('user_id')->references('id')->on('users');
