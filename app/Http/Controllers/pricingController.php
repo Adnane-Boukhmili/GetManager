@@ -50,7 +50,7 @@ class pricingController extends Controller
                     [
                         'price_data'  => [
                             'product_data' => [
-                                'name' => $plan->name,
+                                'name' => 'Monthly plan',
                             ],
                             'unit_amount'  => 100 * $plan->each_employee_price,
                             'currency'     => 'USD',
@@ -93,7 +93,7 @@ class pricingController extends Controller
         $sale->employee_count = $employeeCount;
         $sale->total_price = $totalprice;
         $sale->payment_status = 'Paid Successfuly';
-        $sale->type = 'Buying Plan';
+        $sale->type = 'Plan Purchase';
         $sale->invoice = $invoice->invoice_pdf;
         $sale->save();
 
@@ -149,7 +149,7 @@ class pricingController extends Controller
                     [
                         'price_data'  => [
                             'product_data' => [
-                                'name' => $plan->name,
+                                'name' => 'Upgrading Monthly Plan',
                             ],
                             'unit_amount'  => 100 * $plan->each_employee_price,
                             'currency'     => 'USD',
@@ -197,7 +197,7 @@ class pricingController extends Controller
         $sale->employee_count = $employeeCount;
         $sale->total_price = $totalprice; 
         $sale->payment_status = 'Paid Successfuly';
-        $sale->type = 'Upgrading Plan';
+        $sale->type = 'Plan Upgrade';
         $sale->invoice = $invoice->invoice_pdf;
         $sale->save();
 
@@ -243,7 +243,7 @@ public function stripeCheckoutAdd($nbremp)
                 [
                     'price_data'  => [
                         'product_data' => [
-                            'name' => $plan->name,
+                            'name' => 'Adding Employees To The Plan',
                         ],
                         'unit_amount'  => round(100 * $additionalPrice),
                         'currency'     => 'USD',
@@ -281,7 +281,7 @@ public function stripeCheckoutAddSuccess(Request $request)
     $sale->employee_count = $employeeCount;
     $sale->total_price = $totalprice;
     $sale->payment_status = 'Paid Successfuly';
-    $sale->type = 'Adding Employees';
+    $sale->type = 'Employee Addition';
     $sale->invoice = $invoice->invoice_pdf;
     $sale->save();
 

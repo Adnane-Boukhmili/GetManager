@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Get Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <h1>Welcome to Get Manager :</h1>
@@ -12,6 +13,7 @@
 
 <Style>
 body {
+    font-family: 'Inter', sans-serif;
     display: flex;
     justify-content: center;
     align-items: center;

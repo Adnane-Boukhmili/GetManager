@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\pricingController;
 use App\Http\Controllers\managingController;
+use App\Http\Controllers\invoiceController;
 
 
 /*
@@ -23,7 +24,7 @@ Route::get('/', function () {
 Route::get('/pricing',[pricingController::class,'pricing']);
 Route::post('/set_pricing',[pricingController::class,'set_pricing']);
 Route::get('/managing',[managingController::class,'managing'])->name('managing');
-Route::get('/invoices',[managingController::class,'invoices'])->name('invoices');
+Route::get('/invoices',[invoiceController::class,'invoices'])->name('invoices');
 
 
 
