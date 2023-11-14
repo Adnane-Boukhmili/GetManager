@@ -15,14 +15,17 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->unsignedBigInteger('plan_id')->default(1);
             $table->date('subscription_end_date')->nullable();
+            $table->text('zoom_access_token')->nullable();
+            $table->text('zoom_user_id')->nullable();
+            $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
             $table->foreignId('current_team_id')->nullable();
             $table->string('profile_photo_path', 2048)->nullable();
             $table->timestamps();
+            
             $table->foreign('plan_id')->references('id')->on('plans');
         });
     }

@@ -52,6 +52,10 @@
                 <h2>Invoices</h2>
                 <p>Easily access and manage your invoices.</p>
             </a>
+            <a href="/live" class="card">
+                <h2>live</h2>
+                <p>Easily access and manage your invoices.</p>
+            </a>
             
             </div>
         </div>

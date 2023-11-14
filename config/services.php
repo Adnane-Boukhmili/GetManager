@@ -13,6 +13,11 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
+    'zoom' => [
+        'client_id' => 'ZsXTZBcHQuCUpULg92Xtrg',
+        'client_secret' => '0tjnEa93MW8TWUw3zkFCObsCCbAlzBTj',
+        'redirect_uri' => 'http://127.0.0.1:8000/auth/zoom/callback',
+    ],
 
     'mailgun' => [
         'domain' => env('MAILGUN_DOMAIN'),

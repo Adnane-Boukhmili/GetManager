@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Srmklive\PayPal\Services\PayPal as PayPalClient;
 use Illuminate\Http\Request;
 use App\Models\Employee;
 use App\Models\Employeecounthistory;
@@ -19,6 +20,10 @@ class pricingController extends Controller
         $e = $user->employeeCountHistory ? $user->employeeCountHistory->total_employee_count : 0;
         
         return view('pricing',compact('e','user'));
+       
+    }
+    public function live(){  
+        return view('live');
        
     }
 
@@ -45,7 +50,7 @@ class pricingController extends Controller
                 'success_url' => $redirectUrl,
                 'customer_email' => $user->email,
                 'invoice_creation' => ['enabled' => true],
-                'payment_method_types' => ['link', 'card'],
+                'payment_method_types' => ['card'],
                 'line_items' => [
                     [
                         'price_data'  => [
@@ -144,7 +149,7 @@ class pricingController extends Controller
                 'success_url' => $redirectUrl,
                 'customer_email' => $user->email,
                 'invoice_creation' => ['enabled' => true],
-                'payment_method_types' => ['link', 'card'],
+                'payment_method_types' => ['card'],
                 'line_items' => [
                     [
                         'price_data'  => [
@@ -238,7 +243,7 @@ public function stripeCheckoutAdd($nbremp)
             'success_url' => $redirectUrl,
             'customer_email' => $user->email,
             'invoice_creation' => ['enabled' => true],
-            'payment_method_types' => ['link', 'card'],
+            'payment_method_types' => ['card'],
             'line_items' => [
                 [
                     'price_data'  => [
@@ -295,42 +300,284 @@ public function stripeCheckoutAddSuccess(Request $request)
     return redirect()->route('dashboard')->with('success', 'Payment successful.');
 }
 
+// ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// ----------------------------------------PAYPAL------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
 
-
-    // public function set_pricing(Request $request)
-    // {
-    //     $user = Auth::user();
+public function paypalPayment($nbremp)
+{
     
-    //     $employeeCount = $request->input('employeeRange');
+    $user = Auth::user();
+    $plan = Plan::find(2);
+    $employeeCount = $nbremp;
+    $totalprice = (float)$plan->each_employee_price * (int)$employeeCount;;
     
-    //     $plan = Plan::find(2);
     
-    //     $totalPrice = $plan->each_employee_price * $employeeCount;
+    $data = [
+        'nbremp' => $employeeCount,
+        'totalprice' => $totalprice,
+        'plan' => $plan
+    ];
+    session(['myDataa'=>$data]);
 
-    //     $sale = new Sale();
-    //     $sale->user_id = $user->id;
-    //     $sale->plan_id = $plan->id;
-    //     $sale->employee_count = $employeeCount;
-    //     $sale->total_price = $totalPrice;
-    //     $sale->save();
+    $provider = new PayPalClient;
+    $provider->setApiCredentials(config('paypal'));
+    $paypalToken = $provider->getAccessToken();
+                                
+    
+    $response = $provider->createOrder([
+        "intent" => "CAPTURE",
+        "application_context" => [
+            "return_url" => route('paypal_success'),
+        ],
+        "purchase_units" => [
+            [
+                "amount" => [
+                    "currency_code" => "USD",
+                    "value" => $totalprice
+                ],
+                "description" => "Monthly Plan"
+            ]
+        ]
+    ]);
+    
+    if(isset($response['id']) && $response['id']!=null) {
+        foreach($response['links'] as $link) {
+            if($link['rel'] === 'approve') {
+                return redirect()->away($link['href']);
+            }
+        }
+    } 
 
-    //     $employeeCountHistory = Employeecounthistory::where('user_id', $user->id)->first();
-    //     if ($employeeCountHistory) {
+}
 
-    //         $employeeCountHistory->total_employee_count += $employeeCount;
-    //         $employeeCountHistory->save();
+public function paypalPaymentSuccess(Request $request)
+    {
+        $user = Auth::user();
+        $provider = new PayPalClient;
+        $provider->setApiCredentials(config('paypal'));
+        $paypalToken = $provider->getAccessToken();
+        $response = $provider->capturePaymentOrder($request->token);
+        $data = session('myDataa');
+        $employeeCount = $data['nbremp'];
+        $totalprice = $data['totalprice'];
+        $plan = $data['plan'];
 
-    //     } else {
+        if(isset($response['status']) && $response['status'] == 'COMPLETED') {
+         
+            $sale = new Sale();
+            $sale->user_id = $user->id;
+            $sale->plan_id = $plan->id;
+            $sale->employee_count = $employeeCount;
+            $sale->total_price = $totalprice;
+            $sale->payment_status = 'Paid Successfuly';
+            $sale->type = 'Plan Purchase';
+            $sale->invoice = 'jknkn';
+            $sale->save();
+    
+            $employeeCountHistory = Employeecounthistory::where('user_id', $user->id)->first();
+    
+            if ($employeeCountHistory) {
+    
+                $employeeCountHistory->total_employee_count += $employeeCount;
+                $employeeCountHistory->save();
+    
+            } else {
+    
+                $employeeCountHistory = new Employeecounthistory();
+                $employeeCountHistory->user_id = $user->id;
+                $employeeCountHistory->total_employee_count = $employeeCount;
+                $employeeCountHistory->save();
+            }
+            $addingdays = now()->addDays(30);
+            $user->plan_id = 2;
+            $user->subscription_end_date = $addingdays;
+            $user->save();
+    
+    
+            return redirect()->route('dashboard')->with('success', 'Payment successful.');
+        } 
+    }
 
-    //         $employeeCountHistory = new Employeecounthistory();
-    //         $employeeCountHistory->user_id = $user->id;
-    //         $employeeCountHistory->total_employee_count = $employeeCount;
-    //         $employeeCountHistory->save();
-    //     }
+  // ----------------------------------------------------------------------------------------------
+  public function paypalUpgradePayment()
+{
+    
+    $user = Auth::user();
+    $plan = Plan::find($user->plan_id);
+    $employeeCount= $user->employeecounthistory->total_employee_count;
+
+    $totalprice = $plan->each_employee_price * $employeeCount;
         
-    //     $user->plan_id = 2;
-    //     $user->save();
+    $data = [
+        'nbremp' => $employeeCount,
+        'totalprice' => $totalprice,
+        'plan' => $plan
+    ];
+    session(['myDataa2'=>$data]);
 
-    //     return view('dashboard');
-    // }
+    $provider = new PayPalClient;
+    $provider->setApiCredentials(config('paypal'));
+    $paypalToken = $provider->getAccessToken();
+                                
+    
+    $response = $provider->createOrder([
+        "intent" => "CAPTURE",
+        "application_context" => [
+            "return_url" => route('paypal_upgrade_success'),
+        ],
+        "purchase_units" => [
+            [
+                "amount" => [
+                    "currency_code" => "USD",
+                    "value" => $totalprice
+                ],
+                "description" => "Monthly Plan"
+            ]
+        ]
+    ]);
+    
+    if(isset($response['id']) && $response['id']!=null) {
+        foreach($response['links'] as $link) {
+            if($link['rel'] === 'approve') {
+                return redirect()->away($link['href']);
+            }
+        }
+    } 
+
+}
+
+public function paypalPaymentUpgradeSuccess(Request $request)
+    {
+        $user = Auth::user();
+        $provider = new PayPalClient;
+        $provider->setApiCredentials(config('paypal'));
+        $paypalToken = $provider->getAccessToken();
+        $response = $provider->capturePaymentOrder($request->token);
+
+        $data = session('myDataa2');
+        $employeeCount = $data['nbremp'];
+        $totalprice = $data['totalprice'];
+
+        if(isset($response['status']) && $response['status'] == 'COMPLETED') {
+          
+            
+            $currentSubscriptionEndDate = $user->subscription_end_date;
+            if ($currentSubscriptionEndDate <= now()) {
+                $newEndDate = now()->addDays(30);
+            } else {
+                $newEndDate = (new carbon($currentSubscriptionEndDate))->addDays(30);
+            }
+    
+            $user->subscription_end_date = $newEndDate;
+            $user->save();
+    
+            $sale = new Sale();
+            $sale->user_id = $user->id;
+            $sale->plan_id = $user->plan_id;
+            $sale->employee_count = $employeeCount;
+            $sale->total_price = $totalprice; 
+            $sale->payment_status = 'Paid Successfuly';
+            $sale->type = 'Plan Upgrade';
+            $sale->invoice = 'k;fam;f';
+            $sale->save();
+    
+           
+    
+            return redirect()->route('dashboard')->with('success', 'Payment successful.');
+        } 
+    }
+    // ----------------------------------------------------------------------------------------------
+
+    public function paypalAddPayment($nbremp)
+    {         
+    
+    $user = Auth::user();
+    $plan = Plan::find(2);
+    
+    $additionalEmployees = $nbremp - $user->employeeCountHistory->total_employee_count;
+    $dailyRate = $user->plan->each_employee_price / 30;
+    $currentExpirationDate = $user->subscription_end_date;
+    $remainingDays = Carbon::parse($currentExpirationDate)->diffInDays(Carbon::now());
+    $additionalPrice=$dailyRate * $remainingDays;
+    $additionalCost = $dailyRate * $remainingDays * $additionalEmployees;
+    
+    
+    $data = [
+        'nbremp' => $additionalEmployees,
+        'totalprice' => $additionalCost,
+        'plan' => $plan
+    ];
+    session(['myDataa3'=>$data]);
+    
+        $provider = new PayPalClient;
+        $provider->setApiCredentials(config('paypal'));
+        $paypalToken = $provider->getAccessToken();
+                                    
+        
+        $response = $provider->createOrder([
+            "intent" => "CAPTURE",
+            "application_context" => [
+                "return_url" => route('paypal_add_success'),
+            ],
+            "purchase_units" => [
+                [
+                    "amount" => [
+                        "currency_code" => "USD",
+                        "value" => round($additionalPrice)
+                    ],
+                    "description" => "Monthly Plan"
+                ]
+            ]
+        ]);
+         
+        
+        if(isset($response['id']) && $response['id']!=null) {
+            foreach($response['links'] as $link) {
+                if($link['rel'] === 'approve') {
+                    return redirect()->away($link['href']);
+                }
+            }
+        } 
+    
+    }
+    
+    public function paypalAddPaymentSuccess(Request $request)
+        {
+            $user = Auth::user();
+            $provider = new PayPalClient;
+            $provider->setApiCredentials(config('paypal'));
+            $paypalToken = $provider->getAccessToken();
+            $response = $provider->capturePaymentOrder($request->token);
+
+            $data = session('myDataa3');
+            $employeeCount = $data['nbremp'];
+            $totalprice = $data['totalprice'];
+        
+            if(isset($response['status']) && $response['status'] == 'COMPLETED') {
+               
+                $sale = new Sale();
+                $sale->user_id = $user->id;
+                $sale->plan_id = $user->plan_id;
+                $sale->employee_count = $employeeCount;
+                $sale->total_price = $totalprice;
+                $sale->payment_status = 'Paid Successfuly';
+                $sale->type = 'Employee Addition';
+                $sale->invoice = 'fajfka';
+                $sale->save();
+            
+                $employeeCountHistory = $user->employeeCountHistory;
+                $employeeCountHistory->total_employee_count += $employeeCount;
+                $employeeCountHistory->save();
+        
+        
+                return redirect()->route('dashboard')->with('success', 'Payment successful.');
+            } 
+        }
+    
 }

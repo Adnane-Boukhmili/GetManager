@@ -72,7 +72,10 @@
             <output id="employeeCount">0</output> employees
             <div class="total">
                 Total: $<span id="totalCost">0</span>
-            </div><br>
+            </div><br><br>
+            <img src="{{ asset('/img/stripe.png') }}" alt="stripe" height="30px" width="80px"/><input type="radio" name="payment_method" value="stripe" checked/>
+            <img src="{{ asset('/img/paypal.png') }}" alt="paypal" height="30px" width="80px"/><input type="radio" name="payment_method" value="paypal"/>
+            <br><br>
             <a href="" class="buy-button" id="buyLink">Buy Plan</a>
         @else
         <h2>Next bill: {{ $user->subscription_end_date }}</h2>
@@ -82,47 +85,81 @@
             <output id="employeeCount">{{ $e }}</output> employees
             <div class="total">
                 Total Price For Next Month: $<span id="totalCost">0</span>
-            </div><br>
-            
+            </div><br><br>
+            <img src="{{ asset('/img/stripe.png') }}" alt="stripe" height="30px" width="80px"/><input type="radio" name="payment_method" value="stripe" checked/>
+            <img src="{{ asset('/img/paypal.png') }}" alt="paypal" height="30px" width="80px"/><input type="radio" name="payment_method" value="paypal"/>
+            <br><br>
             <a href="" class="buy-button" id="buyLink">Upgrade</a>
         @endif
     </form>
 </div>
+
+<!-- Your existing HTML and CSS code -->
 
 <script>
     const employeeRange = document.getElementById('employeeRange');
     const totalCost = document.getElementById('totalCost');
     const buyLink = document.getElementById('buyLink');
     const employeeCount = document.getElementById('employeeCount');
-    const numberOfEmployees = parseInt(employeeRange.value, 10);
-    const costPerEmployee = 2;
-    const total = numberOfEmployees * costPerEmployee;
-    totalCost.innerText = total;
-    employeeCount.innerText = numberOfEmployees;
-    const updateBuyLink = (numberOfEmployees) => {
-        if (numberOfEmployees !== parseInt("{{ $e }}", 10) && parseInt("{{ $e }}", 10) != 0) {
+    const paymentMethodRadios = document.getElementsByName('payment_method');
 
-            buyLink.href = `addemp/${numberOfEmployees}`;
-            buyLink.textContent = "Add Employee";
-        } else if (numberOfEmployees == parseInt("{{ $e }}", 10) && parseInt("{{ $e }}", 10) != 0) {
-            buyLink.href = 'stripe/checkout/upgrade';
-            buyLink.textContent = "Upgrade";
-        }else {
-            buyLink.href =  `payment/${numberOfEmployees}`; 
-            buyLink.textContent = "Buy Plan";
-}
+    const calculateTotalCost = (numberOfEmployees) => {
+        const costPerEmployee = 2;
+        return numberOfEmployees * costPerEmployee;
     };
 
-    employeeRange.addEventListener('input', () => {
-        const numberOfEmployees = parseInt(employeeRange.value, 10);
-        const costPerEmployee = 2;
-        const total = numberOfEmployees * costPerEmployee;
+    const updateBuyLink = (numberOfEmployees, paymentMethod) => {
+        const total = calculateTotalCost(numberOfEmployees);
         totalCost.innerText = total;
         employeeCount.innerText = numberOfEmployees;
 
-        updateBuyLink(numberOfEmployees);
-    });
+        if (numberOfEmployees !== parseInt("{{ $e }}", 10) && parseInt("{{ $e }}", 10) != 0) {
+            if(paymentMethod === 'stripe'){
+            buyLink.href = `stripe/addemp/${numberOfEmployees}`;
+            buyLink.textContent = "Add Employee";
+            }else if(paymentMethod === 'paypal'){
+            buyLink.href = `paypal/addemp/${numberOfEmployees}`;
+            buyLink.textContent = "Add Employee";
+            }
+            
+        } else if (numberOfEmployees == parseInt("{{ $e }}", 10) && parseInt("{{ $e }}", 10) != 0) {
+            if(paymentMethod === 'stripe'){
+                    buyLink.href = 'stripe/upgrade';
+            buyLink.textContent = "Upgrade";
+            } else if (paymentMethod === 'paypal'){
+                buyLink.href = 'paypal/upgrade';
+                buyLink.textContent = "Upgrade";
+            }
+        } else {
+            if (paymentMethod === 'stripe') {
+                buyLink.href = `stripe/payment/${numberOfEmployees}`;
+            } else if (paymentMethod === 'paypal') {
+                buyLink.href = `paypal/payment/${numberOfEmployees}`;
+            }
+            buyLink.textContent = "Buy Plan";
+        }
+    };
+
+    const handlePaymentMethodChange = () => {
+        const selectedPaymentMethod = Array.from(paymentMethodRadios).find(radio => radio.checked)?.value;
+        const numberOfEmployees = parseInt(employeeRange.value, 10);
+        if (selectedPaymentMethod) {
+            updateBuyLink(numberOfEmployees, selectedPaymentMethod);
+        }
+    };
+
+    employeeRange.addEventListener('input', handlePaymentMethodChange);
+
+    // Handle initial setup
+    paymentMethodRadios.forEach(radio => radio.addEventListener('change', handlePaymentMethodChange));
+    
+    // Initial setup
+    handlePaymentMethodChange();
+
 </script>
+
+<!-- Your existing HTML and CSS code -->
+
 
 </body>
 </html>
