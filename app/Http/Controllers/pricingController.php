@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Srmklive\PayPal\Services\PayPal as PayPalClient;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use App\Models\Employee;
 use App\Models\Employeecounthistory;
@@ -98,8 +99,10 @@ class pricingController extends Controller
         $sale->employee_count = $employeeCount;
         $sale->total_price = $totalprice;
         $sale->payment_status = 'Paid Successfuly';
+        $sale->payment_method = 'stripe';
         $sale->type = 'Plan Purchase';
-        $sale->invoice = $invoice->invoice_pdf;
+        $sale->stripe_invoice = $invoice->invoice_pdf;
+        $sale->paypal_invoice = null;
         $sale->save();
 
         $employeeCountHistory = Employeecounthistory::where('user_id', $user->id)->first();
@@ -202,8 +205,10 @@ class pricingController extends Controller
         $sale->employee_count = $employeeCount;
         $sale->total_price = $totalprice; 
         $sale->payment_status = 'Paid Successfuly';
+        $sale->payment_method = 'stripe';
         $sale->type = 'Plan Upgrade';
-        $sale->invoice = $invoice->invoice_pdf;
+        $sale->stripe_invoice = $invoice->invoice_pdf;
+        $sale->paypal_invoice = null;
         $sale->save();
 
 
@@ -286,8 +291,10 @@ public function stripeCheckoutAddSuccess(Request $request)
     $sale->employee_count = $employeeCount;
     $sale->total_price = $totalprice;
     $sale->payment_status = 'Paid Successfuly';
+    $sale->payment_method = 'stripe';
     $sale->type = 'Employee Addition';
-    $sale->invoice = $invoice->invoice_pdf;
+    $sale->stripe_invoice = $invoice->invoice_pdf;
+    $sale->paypal_invoice = null;
     $sale->save();
 
     $employeeCountHistory = $user->employeeCountHistory;
@@ -308,28 +315,37 @@ public function stripeCheckoutAddSuccess(Request $request)
 // ----------------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------------------------
+function generateInvoiceId() {
+    // Combine a prefix with a timestamp and a random number to create a unique ID
+    $prefix = 'INV';  // You can customize the prefix as needed
+    $timestamp = time();
+    $randomNumber = mt_rand(1000, 9999);
+
+    // Concatenate the parts to create the invoice ID
+    $invoiceId = $prefix . $timestamp . $randomNumber;
+
+    return $invoiceId;
+}
 
 public function paypalPayment($nbremp)
 {
-    
     $user = Auth::user();
     $plan = Plan::find(2);
     $employeeCount = $nbremp;
-    $totalprice = (float)$plan->each_employee_price * (int)$employeeCount;;
-    
-    
+    $itemTotal = (float)$plan->each_employee_price * (int)$employeeCount;
+
     $data = [
         'nbremp' => $employeeCount,
-        'totalprice' => $totalprice,
+        'totalprice' => $itemTotal,
         'plan' => $plan
     ];
-    session(['myDataa'=>$data]);
+    session(['myDataa' => $data]);
 
     $provider = new PayPalClient;
     $provider->setApiCredentials(config('paypal'));
     $paypalToken = $provider->getAccessToken();
-                                
-    
+    $generatedNumber = $this->generateInvoiceId();
+
     $response = $provider->createOrder([
         "intent" => "CAPTURE",
         "application_context" => [
@@ -339,21 +355,75 @@ public function paypalPayment($nbremp)
             [
                 "amount" => [
                     "currency_code" => "USD",
-                    "value" => $totalprice
+                    "value" => $itemTotal,
+                    "breakdown" => [
+                        "item_total" => [
+                            "currency_code" => "USD",
+                            "value" => $itemTotal,
+                        ],
+                    ],
                 ],
-                "description" => "Monthly Plan"
+                "description" => "Monthly Plan",
+                "items" => [
+                    [
+                        "name" => "Plan Subscription",
+                        "description" => "Monthly Plan Subscription",
+                        "unit_amount" => [
+                            "currency_code" => "USD",
+                            "value" => $plan->each_employee_price,
+                        ],
+                        "quantity" => $employeeCount,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+    $invoiceResponse = $provider->createInvoice([
+        "detail" => [
+            "invoice_number" =>  $generatedNumber,
+            "invoice_date" => now()->toDateString(),
+            "currency_code" => "USD",
+            "note" => "Thank you for your business."
+        ],
+        "merchant_info" => [
+            "email" => "business@digitalpartnership.com",
+            "first_name" => "David",
+            "last_name" => "Larusso",
+            "business_name" => "Mitchell & Murray",
+            "phone" => [
+                "country_code" => "001",
+                "national_number" => "4085551234"
+            ]
+        ],
+        "billing_info" => [
+            [
+                "email" => "bill-me@example.com",
+                "first_name" => "Stephanie",
+                "last_name" => "Meyers"
+            ]
+        ],
+        "items" => [
+            [
+                "name" => "Plan Upgrade",
+                "quantity" => $employeeCount,
+                "unit_amount" => [
+                    "currency_code" => "USD",
+                    "value" => $plan->each_employee_price
+                ],
+                "tax" => [
+                    "name" => "Sales Tax",
+                    "percent" => "0"
+                ]
             ]
         ]
     ]);
-    
-    if(isset($response['id']) && $response['id']!=null) {
-        foreach($response['links'] as $link) {
-            if($link['rel'] === 'approve') {
+    if (isset($response['id']) && $response['id'] != null) {
+        foreach ($response['links'] as $link) {
+            if ($link['rel'] === 'approve') {
                 return redirect()->away($link['href']);
             }
         }
-    } 
-
+    }
 }
 
 public function paypalPaymentSuccess(Request $request)
@@ -363,12 +433,29 @@ public function paypalPaymentSuccess(Request $request)
         $provider->setApiCredentials(config('paypal'));
         $paypalToken = $provider->getAccessToken();
         $response = $provider->capturePaymentOrder($request->token);
+        
         $data = session('myDataa');
         $employeeCount = $data['nbremp'];
         $totalprice = $data['totalprice'];
         $plan = $data['plan'];
 
         if(isset($response['status']) && $response['status'] == 'COMPLETED') {
+            $invoices = $provider->listInvoices();
+            $invoiceId = $invoices['items'][0]['id'];
+            $invo = $provider->showInvoiceDetails($invoiceId);
+            $recipientViewUrl = $invo['detail']['metadata']['recipient_view_url'];
+            //--------------------------validating-------------------------
+            $payment_method = 'PAYPAL';
+
+            $payment_date = now()->toDateString();
+
+            $amount = $totalprice;
+
+            $invoice_no = $invoiceId ;
+
+            $status = $provider->registerPaymentInvoice($invoice_no, $payment_date, $payment_method, $amount);
+            //---------------------------------------------------------------
+            
          
             $sale = new Sale();
             $sale->user_id = $user->id;
@@ -376,8 +463,10 @@ public function paypalPaymentSuccess(Request $request)
             $sale->employee_count = $employeeCount;
             $sale->total_price = $totalprice;
             $sale->payment_status = 'Paid Successfuly';
+            $sale->payment_method = 'paypal';
             $sale->type = 'Plan Purchase';
-            $sale->invoice = 'jknkn';
+            $sale->stripe_invoice = null;
+            $sale->paypal_invoice = $recipientViewUrl;
             $sale->save();
     
             $employeeCountHistory = Employeecounthistory::where('user_id', $user->id)->first();
@@ -403,54 +492,111 @@ public function paypalPaymentSuccess(Request $request)
             return redirect()->route('dashboard')->with('success', 'Payment successful.');
         } 
     }
+    
 
   // ----------------------------------------------------------------------------------------------
   public function paypalUpgradePayment()
-{
-    
-    $user = Auth::user();
-    $plan = Plan::find($user->plan_id);
-    $employeeCount= $user->employeecounthistory->total_employee_count;
-
-    $totalprice = $plan->each_employee_price * $employeeCount;
-        
-    $data = [
-        'nbremp' => $employeeCount,
-        'totalprice' => $totalprice,
-        'plan' => $plan
-    ];
-    session(['myDataa2'=>$data]);
-
-    $provider = new PayPalClient;
-    $provider->setApiCredentials(config('paypal'));
-    $paypalToken = $provider->getAccessToken();
-                                
-    
-    $response = $provider->createOrder([
-        "intent" => "CAPTURE",
-        "application_context" => [
-            "return_url" => route('paypal_upgrade_success'),
+  {
+      $user = Auth::user();
+      $plan = Plan::find($user->plan_id);
+      $employeeCount = $user->employeecounthistory->total_employee_count;
+  
+      $itemTotal = $plan->each_employee_price * $employeeCount;
+      $generatedNumber = $this->generateInvoiceId();
+      $data = [
+          'nbremp' => $employeeCount,
+          'totalprice' => $itemTotal,
+          'plan' => $plan,
+      ];
+      session(['myDataa2' => $data]);
+  
+      $provider = new PayPalClient;
+      $provider->setApiCredentials(config('paypal'));
+      $paypalToken = $provider->getAccessToken();
+  
+      $response = $provider->createOrder([
+          "intent" => "CAPTURE",
+          "application_context" => [
+              "return_url" => route('paypal_upgrade_success'),
+          ],
+          "purchase_units" => [
+              [
+                  "amount" => [
+                      "currency_code" => "USD",
+                      "value" => $itemTotal,
+                      "breakdown" => [
+                          "item_total" => [
+                              "currency_code" => "USD",
+                              "value" => $itemTotal,
+                          ],
+                      ],
+                  ],
+                  "description" => "Upgrading Monthly Plan",
+                  "items" => [
+                      [
+                          "name" => "Plan Upgrade",
+                          "description" => "Upgrading Monthly Plan",
+                          "unit_amount" => [
+                              "currency_code" => "USD",
+                              "value" => $plan->each_employee_price,
+                          ],
+                          "quantity" => $employeeCount,
+                      ],
+                  ],
+              ],
+          ],
+      ]);
+     
+      $invoiceResponse = $provider->createInvoice([
+        "detail" => [
+            "invoice_number" =>  $generatedNumber,
+            "invoice_date" => now()->toDateString(),
+            "currency_code" => "USD",
+            "note" => "Thank you for your business."
         ],
-        "purchase_units" => [
+        "merchant_info" => [
+            "email" => "business@digitalpartnership.com",
+            "first_name" => "David",
+            "last_name" => "Larusso",
+            "business_name" => "Mitchell & Murray",
+            "phone" => [
+                "country_code" => "001",
+                "national_number" => "4085551234"
+            ]
+        ],
+        "billing_info" => [
             [
-                "amount" => [
+                "email" => "bill-me@example.com",
+                "first_name" => "Stephanie",
+                "last_name" => "Meyers"
+            ]
+        ],
+        "items" => [
+            [
+                "name" => "Plan Upgrade",
+                "quantity" => $employeeCount,
+                "unit_amount" => [
                     "currency_code" => "USD",
-                    "value" => $totalprice
+                    "value" => $plan->each_employee_price
                 ],
-                "description" => "Monthly Plan"
+                "tax" => [
+                    "name" => "Sales Tax",
+                    "percent" => "0"
+                ]
             ]
         ]
     ]);
-    
-    if(isset($response['id']) && $response['id']!=null) {
-        foreach($response['links'] as $link) {
-            if($link['rel'] === 'approve') {
-                return redirect()->away($link['href']);
-            }
-        }
-    } 
-
-}
+  
+  
+      if (isset($response['id']) && $response['id'] != null) {
+          foreach ($response['links'] as $link) {
+              if ($link['rel'] === 'approve') {
+                  return redirect()->away($link['href']);
+              }
+          }
+      }
+  }
+  
 
 public function paypalPaymentUpgradeSuccess(Request $request)
     {
@@ -465,7 +611,22 @@ public function paypalPaymentUpgradeSuccess(Request $request)
         $totalprice = $data['totalprice'];
 
         if(isset($response['status']) && $response['status'] == 'COMPLETED') {
-          
+            $invoices = $provider->listInvoices();
+            $invoiceId = $invoices['items'][0]['id'];
+            $invo = $provider->showInvoiceDetails($invoiceId);
+            $recipientViewUrl = $invo['detail']['metadata']['recipient_view_url'];
+            //--------------------------validating-------------------------
+            $payment_method = 'PAYPAL';
+
+            $payment_date = now()->toDateString();
+
+            $amount = $totalprice;
+
+            $invoice_no = $invoiceId ;
+
+            $status = $provider->registerPaymentInvoice($invoice_no, $payment_date, $payment_method, $amount);
+            //---------------------------------------------------------------
+                                            
             
             $currentSubscriptionEndDate = $user->subscription_end_date;
             if ($currentSubscriptionEndDate <= now()) {
@@ -483,8 +644,10 @@ public function paypalPaymentUpgradeSuccess(Request $request)
             $sale->employee_count = $employeeCount;
             $sale->total_price = $totalprice; 
             $sale->payment_status = 'Paid Successfuly';
+            $sale->payment_method = 'paypal';
             $sale->type = 'Plan Upgrade';
-            $sale->invoice = 'k;fam;f';
+            $sale->stripe_invoice = null;
+            $sale->paypal_invoice = $recipientViewUrl;
             $sale->save();
     
            
@@ -496,30 +659,31 @@ public function paypalPaymentUpgradeSuccess(Request $request)
 
     public function paypalAddPayment($nbremp)
     {         
-    
-    $user = Auth::user();
-    $plan = Plan::find(2);
-    
-    $additionalEmployees = $nbremp - $user->employeeCountHistory->total_employee_count;
-    $dailyRate = $user->plan->each_employee_price / 30;
-    $currentExpirationDate = $user->subscription_end_date;
-    $remainingDays = Carbon::parse($currentExpirationDate)->diffInDays(Carbon::now());
-    $additionalPrice=$dailyRate * $remainingDays;
-    $additionalCost = $dailyRate * $remainingDays * $additionalEmployees;
-    
-    
-    $data = [
-        'nbremp' => $additionalEmployees,
-        'totalprice' => $additionalCost,
-        'plan' => $plan
-    ];
-    session(['myDataa3'=>$data]);
-    
+        $user = Auth::user();
+        $plan = Plan::find(2);
+
+        $generatedNumber = $this->generateInvoiceId();
+        $additionalEmployees = $nbremp - $user->employeeCountHistory->total_employee_count;
+        $dailyRate = $user->plan->each_employee_price / 30;
+        $currentExpirationDate = $user->subscription_end_date;
+        $remainingDays = Carbon::parse($currentExpirationDate)->diffInDays(Carbon::now());
+
+        $additionalPrice = $dailyRate * $remainingDays;
+        $additionalCost = round($additionalPrice,2) * $additionalEmployees; 
+             
+       
+
+        $data = [
+            'nbremp' => $additionalEmployees,
+            'totalprice' => $additionalCost,
+            'plan' => $plan
+        ];
+        session(['myDataa3' => $data]);
+        
         $provider = new PayPalClient;
         $provider->setApiCredentials(config('paypal'));
         $paypalToken = $provider->getAccessToken();
-                                    
-        
+                                        
         $response = $provider->createOrder([
             "intent" => "CAPTURE",
             "application_context" => [
@@ -529,23 +693,80 @@ public function paypalPaymentUpgradeSuccess(Request $request)
                 [
                     "amount" => [
                         "currency_code" => "USD",
-                        "value" => round($additionalPrice)
+                        "value" => round($additionalCost,2),
+                        "breakdown" => [
+                            "item_total" => [
+                                "currency_code" => "USD",
+                                "value" => round($additionalCost,2),
+                            ],
+                        ],
                     ],
-                    "description" => "Monthly Plan"
+                    "description" => "Adding Employees To The Plan",
+                    "items" => [
+                        [
+                            "name" => "Additional Employees",
+                            "description" => "Adding Employees To The Plan",
+                            "unit_amount" => [
+                                "currency_code" => "USD",
+                                "value" => round($additionalPrice,2),
+                            ],
+                            "quantity" => $additionalEmployees,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $invoiceResponse = $provider->createInvoice([
+            "detail" => [
+                "invoice_number" =>  $generatedNumber,
+                "invoice_date" => now()->toDateString(),
+                "currency_code" => "USD",
+                "note" => "Thank you for your business."
+            ],
+            "merchant_info" => [
+                "email" => "business@digitalpartnership.com",
+                "first_name" => "David",
+                "last_name" => "Larusso",
+                "business_name" => "Mitchell & Murray",
+                "phone" => [
+                    "country_code" => "001",
+                    "national_number" => "4085551234"
+                ]
+            ],
+            "billing_info" => [
+                [
+                    "email" => "bill-me@example.com",
+                    "first_name" => "Stephanie",
+                    "last_name" => "Meyers"
+                ]
+            ],
+            "items" => [
+                [
+                    "name" => "Plan Upgrade",
+                    "quantity" => $additionalEmployees,
+                    "unit_amount" => [
+                        "currency_code" => "USD",
+                        "value" => $additionalPrice
+                    ],
+                    "tax" => [
+                        "name" => "Sales Tax",
+                        "percent" => "0"
+                    ]
                 ]
             ]
         ]);
-         
-        
-        if(isset($response['id']) && $response['id']!=null) {
+      
+      
+        if(isset($response['id']) && $response['id'] != null) {
             foreach($response['links'] as $link) {
                 if($link['rel'] === 'approve') {
                     return redirect()->away($link['href']);
                 }
             }
-        } 
-    
+        }
     }
+    
     
     public function paypalAddPaymentSuccess(Request $request)
         {
@@ -560,15 +781,33 @@ public function paypalPaymentUpgradeSuccess(Request $request)
             $totalprice = $data['totalprice'];
         
             if(isset($response['status']) && $response['status'] == 'COMPLETED') {
-               
+
+                $invoices = $provider->listInvoices();
+                $invoiceId = $invoices['items'][0]['id'];
+                $invo = $provider->showInvoiceDetails($invoiceId);
+                $recipientViewUrl = $invo['detail']['metadata']['recipient_view_url'];
+                //--------------------------validating-------------------------
+                $payment_method = 'PAYPAL';
+
+                $payment_date = now()->toDateString();
+
+                $amount = $totalprice;
+
+                $invoice_no = $invoiceId ;
+
+                $status = $provider->registerPaymentInvoice($invoice_no, $payment_date, $payment_method, $amount);
+                //---------------------------------------------------------------
+                
                 $sale = new Sale();
                 $sale->user_id = $user->id;
                 $sale->plan_id = $user->plan_id;
                 $sale->employee_count = $employeeCount;
                 $sale->total_price = $totalprice;
                 $sale->payment_status = 'Paid Successfuly';
+                $sale->payment_method = 'paypal';
                 $sale->type = 'Employee Addition';
-                $sale->invoice = 'fajfka';
+                $sale->stripe_invoice = null;
+                $sale->paypal_invoice = $recipientViewUrl;
                 $sale->save();
             
                 $employeeCountHistory = $user->employeeCountHistory;

@@ -34,6 +34,12 @@
                                     <!-- Display a message or take other actions for non-host users -->
                                     Not Host
                                 @endif
+                            
+                                <form method="POST" action="{{ route('meetings.delete', ['meetingId' => $meeting['id']]) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-danger">Delete</button>
+                                </form>
                             </td>
                         </tr>
                     @endforeach

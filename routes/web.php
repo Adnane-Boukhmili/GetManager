@@ -27,6 +27,10 @@ Route::get('/pricing',[pricingController::class,'pricing']);
 Route::post('/set_pricing',[pricingController::class,'set_pricing']);
 Route::get('/managing',[managingController::class,'managing'])->name('managing');
 Route::get('/invoices',[invoiceController::class,'invoices'])->name('invoices');
+Route::get('/stripe_invoices',[invoiceController::class,'stripe_invoices'])->name('stripe.invoices');
+Route::get('/paypal_invoices',[invoiceController::class,'paypal_invoices'])->name('paypal.invoices');
+
+
 
 
 //----------------------------------ZOOM-------------------------------------------
@@ -35,6 +39,14 @@ Route::get('/zoomlive', [ZoomController::class,'zoomlive'])->name('zoomlive');
 Route::get('/auth/zoom/callback', [ZoomController::class, 'handleZoomCallback']);
 Route::match(['get', 'post'], '/auth/zoom', [ZoomController::class, 'redirectToZoom']);
 Route::post('/createMeeting', [ZoomController::class, 'createMeeting']);
+
+Route::get('/meetings/start/{meetingId}', [ZoomController::class, 'startMeeting'])
+    ->name('start.meeting');
+Route::get('/meetings/iframe/{meetingId}', function ($meetingId) {
+    return view('meeting-iframe', ['meetingId' => $meetingId]);
+})->name('meeting.iframe');
+Route::delete('/meetings/{meetingId}', [ZoomController::class, 'deleteMeeting'])
+    ->name('meetings.delete');
 
 //----------------------------------MANAGING-------------------------------------------
 
@@ -64,9 +76,8 @@ Route::get('paypal/success', [pricingController::class,'paypalPaymentSuccess'])-
 Route::get('paypal/upgrade', [pricingController::class,'paypalUpgradePayment'])->name('paypalUpgrade');
 Route::get('paypal/upgrade/success', [pricingController::class,'paypalPaymentUpgradeSuccess'])->name('paypal_upgrade_success');
 
-
-Route::get('paypal/addemp/{nbremp}', [pricingController::class,'paypalAddPayment'])->name('paypalAdd');
 Route::get('paypal/addemp/success', [pricingController::class,'paypalAddPaymentSuccess'])->name('paypal_add_success');
+Route::get('paypal/addemp/{nbremp}', [pricingController::class,'paypalAddPayment'])->name('paypalAdd');
 
 
 

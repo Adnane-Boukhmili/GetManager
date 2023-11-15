@@ -19,7 +19,9 @@ return new class extends Migration
             $table->decimal('total_price', 10, 2);
             $table->string('payment_status');
             $table->string('type');
-            $table->string('invoice');
+            $table->string('payment_method');
+            $table->string('stripe_invoice')->nullable();
+            $table->string('paypal_invoice')->nullable();
             $table->timestamps();
 
             $table->foreign('user_id')->references('id')->on('users');

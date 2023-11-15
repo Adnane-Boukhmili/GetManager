@@ -182,4 +182,58 @@ class ZoomController extends Controller
         abort(500, 'Error fetching Zoom user details.');
     }
 }
+
+
+
+public function startMeeting(Request $request, $meetingId)
+{
+    // Retrieve the Zoom access token for the authenticated user
+    $accessToken = auth()->user()->zoom_access_token;
+dd($meetingId);
+    // Make a request to the Zoom API to start the meeting
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $accessToken,
+        'Content-Type' => 'application/json',
+    ])->post("https://api.zoom.us/v2/meetings/{$meetingId}/start");
+
+    if ($response->successful()) {
+        // The meeting has been started successfully
+        // You can handle the response or redirect the user to a confirmation page
+        return view('meeting-iframe', ['meetingId' => $meetingId]);
+    } else {
+        // Handle the error, log it, or display an error message
+        $error = $response->json();
+    
+        return redirect()->route('dashboard')->with('error', $error['message'] ?? 'Error starting the meeting.');
+    }
+}
+
+
+public function deleteMeeting(Request $request, $meetingId)
+{
+    // Retrieve the Zoom access token for the authenticated user
+    $accessToken = auth()->user()->zoom_access_token;
+
+    // Make a request to the Zoom API to delete the meeting
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $accessToken,
+        'Content-Type' => 'application/json',
+    ])->delete("https://api.zoom.us/v2/meetings/{$meetingId}");
+    $error = json_decode($response->body(), true);
+    dd($error, $response->body(), $response->status());
+    
+    if ($response->successful()) {
+        // The meeting has been deleted successfully
+        // You can handle the response or redirect the user to a confirmation page
+        return redirect()->back();
+    } else {
+        // Handle the error, log it, or display an error message
+        $error = $response->json();
+        
+        // Add the following line to get more information about the response
+        dd($error, $response->body(), $response->status());
+
+        return redirect()->route('dashboard')->with('error', $error['message'] ?? 'Error deleting the meeting.');
+    }
+}
 }

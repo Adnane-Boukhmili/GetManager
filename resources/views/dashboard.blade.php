@@ -48,7 +48,7 @@
                 <h2>Manage Employees</h2>
                 <p>Efficiently manage your workforce.</p>
             </a>
-            <a href="{{ url('invoices') }}" class="card">
+            <a href="/invoices" class="card">
                 <h2>Invoices</h2>
                 <p>Easily access and manage your invoices.</p>
             </a>
